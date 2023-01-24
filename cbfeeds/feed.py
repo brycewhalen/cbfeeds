@@ -375,7 +375,7 @@ class CbReport(object):
                 raise CbInvalidReport(f"{self._rid}, field 'iocs', unknown ioc '{key}'")
 
             if key.lower() == "query":
-                if not isinstance(item, Dict):
+                if not any(isinstance(item, Dict) for query in item):
                     raise CbInvalidReport(f"{self._rid}, field 'iocs', ioc '{key}', is not a dictionary")
                 # NOTE: other query ioc testing below
             else:
@@ -398,7 +398,7 @@ class CbReport(object):
             if len(extras) > 0:
                 raise CbInvalidReport(f"{self._rid}, field 'iocs', has extra keys: {extras}")
 
-            iocs_query = iocs["query"]  # for cleaner code
+            iocs_query = iocs["query"][0]  # for cleaner code
 
             # validate that the index_type field exists
             if "index_type" not in iocs_query.keys():
@@ -417,9 +417,12 @@ class CbReport(object):
             # in particular, we are looking for a "q=" (process) or "cb.q.????=" (binary)
             # this is by no means a complete validation, but it does provide a protection
             # against leaving the actual query unqualified
-            for item in iocs_query["search_query"]:
-                if "q=" not in item and "cb.q." not in item:
-                    raise CbInvalidReport(f"{self._rid}, field 'iocs', 'query' has bad 'search_query': {item}")
+            for key, item in iocs_query.items():
+                if 'search_query' not in key:
+                    continue
+                    
+                if not item.startswith("q=") and not item.startswith("cb.urlver=1&q="):
+                    raise CbInvalidReport(f"{self._rid}, field 'iocs', 'query' missing q= at the beginning of the search query\n 'search_query': {item}")
 
                 for kvpair in item.split('&'):
                     if len(kvpair.split('=')) != 2:
@@ -506,8 +509,9 @@ class CbReport(object):
         # no logic to detect unescaped '%' characters
         for c in q:
             if c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~%*()":
-                raise CbInvalidReport(f"{self._rid}, field 'iocs', 'query' has unescaped non-reserved character "
-                                      f"'{c}' found in query; use percent-encoding")
+                raise CbInvalidReport(f"\n{self._rid}, field 'iocs', 'query' has unescaped non-reserved character "
+                                      f"'{c}' found in query; use percent-encoding"
+                                      f"search_query: {q}\n")
 
 
 # --------------------------------------------------------------------------------
@@ -525,7 +529,7 @@ class CbFeed(object):
     """
 
     def __init__(self, feedinfo: Union[CbFeedInfo, Dict[str, Union[str, int, float]]],
-                 reports: List[Union[CbReport, Dict[str, Union[str, int, Dict, List]]]]):
+                 reports: List[Union[CbReport, Dict[str, Union[str, int, Dict, List]]]], strict):
         """
         Initialize the class.
 
